@@ -1,3 +1,4 @@
+// Package docker comment :)
 package docker
 
 import (
@@ -45,7 +46,8 @@ func getContainerLogs(ctx context.Context, apiClient *client.Client, containerID
 	logs, err := apiClient.ContainerLogs(ctx, containerID, client.ContainerLogsOptions{
 		ShowStdout: true,
 		ShowStderr: true,
-		Tail:       "50",
+		Tail:       "10",
+		Timestamps: false,
 	})
 	if err != nil {
 		return []string{"Error fetching logs"}
@@ -58,7 +60,7 @@ func getContainerLogs(ctx context.Context, apiClient *client.Client, containerID
 func getHostInfo() HostInfo {
 	var memStats runtime.MemStats
 	runtime.ReadMemStats(&memStats)
-	
+
 	return HostInfo{
 		CPUCount: runtime.NumCPU(),
 		MemTotal: memStats.Sys,
@@ -67,7 +69,7 @@ func getHostInfo() HostInfo {
 }
 
 type Containers struct {
-	C []Container
+	C    []Container
 	Host HostInfo
 	Logs []ContainerLog
 }
@@ -105,10 +107,10 @@ func WatchContainers(ctx context.Context, apiClient *client.Client) (Containers,
 			Service:    c.Labels["com.docker.compose.service"],
 			SOVersion:  c.Labels["org.opencontainers.image.ref.name"] + " " + c.Labels["org.opencontainers.image.version"],
 			WorkingDir: c.Labels["com.docker.compose.project.working_dir"], ConfigFile: c.Labels["com.docker.compose.project.config_files"],
-			CreatedAt: c.Created,
+			CreatedAt:  c.Created,
 			CPUPercent: stat.CPUPercent,
-			MemUsage: stat.MemUsage,
-			Log: logs,
+			MemUsage:   stat.MemUsage,
+			Log:        logs,
 		})
 	}
 	containers.Host = getHostInfo()

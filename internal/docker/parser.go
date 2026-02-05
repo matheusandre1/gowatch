@@ -1,8 +1,8 @@
 package docker
 
 import (
-	"bufio"
 	"io"
+	"strings"
 
 	"github.com/moby/moby/api/types/container"
 )
@@ -22,12 +22,46 @@ func ParseStats(statsJSON container.StatsResponse) (cpu float64, mem uint64) {
 
 func ParseLogs(rawLogs io.ReadCloser) []string {
 	var logs []string
-	scanner := bufio.NewScanner(rawLogs)
+	buf := make([]byte, 4096)
 
-	for scanner.Scan() {
-		line := scanner.Text()
-		if len(line) > 8 {
-			logs = append(logs, line[8:])
+	for {
+		n, err := rawLogs.Read(buf)
+		if err != nil && err != io.EOF {
+			return []string{"Error reading logs"}
+		}
+		if n == 0 {
+			break
+		}
+
+		// Handle Docker multiplexed log format
+		// Format: [HEADER][PAYLOAD][HEADER][PAYLOAD]...
+		pos := 0
+		for pos < n {
+			if pos+8 > n {
+				break // Not enough data for header
+			}
+
+			// Header: stream type (1 byte) + size (4 bytes big endian) + padding (3 bytes)
+			_ = buf[pos] // stream type (1=stdout, 2=stderr)
+			// Parse size from next 4 bytes (big endian)
+			size := int(buf[pos+4])<<24 | int(buf[pos+5])<<16 | int(buf[pos+6])<<8 | int(buf[pos+7])
+
+			pos += 8 // Skip header
+
+			if pos+size > n {
+				break // Not enough data for payload
+			}
+
+			if size > 0 {
+				logLine := string(buf[pos : pos+size])
+				// Trim newline and any trailing whitespace
+				logLine = strings.TrimSpace(logLine)
+				if logLine != "" {
+					logs = append(logs, logLine)
+				}
+			}
+
+			pos += size
 		}
 	}
 

@@ -9,3 +9,8 @@ services:
       dockerfile: .setup/build/Dockerfile
     volumes:
       - ./:/go/src
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - TERM=xterm
+    stdin_open: true
+    tty: true
