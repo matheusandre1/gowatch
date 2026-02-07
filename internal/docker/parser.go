@@ -8,11 +8,23 @@ import (
 )
 
 func ParseStats(statsJSON container.StatsResponse) (cpu float64, mem uint64) {
+	if statsJSON.PreCPUStats.CPUUsage.TotalUsage == 0 || statsJSON.PreCPUStats.SystemUsage == 0 {
+		return 0.0, statsJSON.MemoryStats.Usage
+	}
+
 	cpuDelta := float64(statsJSON.CPUStats.CPUUsage.TotalUsage - statsJSON.PreCPUStats.CPUUsage.TotalUsage)
 	systemDelta := float64(statsJSON.CPUStats.SystemUsage - statsJSON.PreCPUStats.SystemUsage)
 	cpuPercent := 0.0
+
+	var onlineCPUs float64
+	if statsJSON.CPUStats.OnlineCPUs != 0 {
+		onlineCPUs = float64(statsJSON.CPUStats.OnlineCPUs)
+	} else {
+		onlineCPUs = float64(len(statsJSON.CPUStats.CPUUsage.PercpuUsage))
+	}
+
 	if systemDelta > 0.0 && cpuDelta > 0.0 {
-		cpuPercent = (cpuDelta / systemDelta) * float64(len(statsJSON.CPUStats.CPUUsage.PercpuUsage)) * 100.0
+		cpuPercent = (cpuDelta / systemDelta) * onlineCPUs * 100.0
 	}
 
 	memUsage := statsJSON.MemoryStats.Usage

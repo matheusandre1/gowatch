@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"runtime"
+	"sync"
 
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/client"
@@ -31,6 +32,11 @@ type FormattedLog struct {
 	Line    string
 }
 
+var (
+	previousStats = make(map[string]container.StatsResponse)
+	statsMutex    sync.RWMutex
+)
+
 func getContainerStats(ctx context.Context, apiClient *client.Client, containerID string) ContainerStats {
 	stats, err := apiClient.ContainerStats(ctx, containerID, client.ContainerStatsOptions{Stream: false})
 	if err != nil {
@@ -42,6 +48,14 @@ func getContainerStats(ctx context.Context, apiClient *client.Client, containerI
 	if err := json.NewDecoder(stats.Body).Decode(&statsJSON); err != nil {
 		return ContainerStats{CPUPercent: 0, MemUsage: 0}
 	}
+
+	statsMutex.Lock()
+	prevStats, exists := previousStats[containerID]
+	if exists {
+		statsJSON.PreCPUStats = prevStats.CPUStats
+	}
+	previousStats[containerID] = statsJSON
+	statsMutex.Unlock()
 
 	cpuPercent, memUsage := ParseStats(statsJSON)
 	return ContainerStats{CPUPercent: cpuPercent, MemUsage: memUsage}
