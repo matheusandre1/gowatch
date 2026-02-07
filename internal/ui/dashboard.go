@@ -16,6 +16,8 @@ type Dashboard struct {
 	logsView      *tview.TextView
 	resourcesView *tview.TextView
 	grid          *tview.Grid
+	userScrolling bool
+	firstRender   bool
 }
 
 func NewDashboard() *Dashboard {
@@ -43,17 +45,35 @@ func NewDashboard() *Dashboard {
 		SetColumns(0, 0).
 		AddItem(servicesTable, 0, 0, 1, 1, 0, 0, false).
 		AddItem(resourcesView, 0, 1, 1, 1, 0, 0, false).
-		AddItem(logsView, 1, 0, 1, 2, 0, 0, false)
+		AddItem(logsView, 1, 0, 1, 2, 0, 0, true)
 
 	app.SetRoot(grid, true)
+	app.EnableMouse(true)
+	app.SetFocus(logsView)
 
-	return &Dashboard{
+	dash := &Dashboard{
 		app:           app,
 		servicesTable: servicesTable,
 		logsView:      logsView,
 		resourcesView: resourcesView,
 		grid:          grid,
+		userScrolling: false,
+		firstRender:   true,
 	}
+
+	logsView.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		dash.userScrolling = true
+		return event
+	})
+
+	logsView.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
+		if action == tview.MouseScrollUp || action == tview.MouseScrollDown {
+			dash.userScrolling = true
+		}
+		return action, event
+	})
+
+	return dash
 }
 
 func (d *Dashboard) Update(containers docker.Containers) {
@@ -120,24 +140,45 @@ func (d *Dashboard) updateResourcesView(host docker.HostInfo) {
 	fmt.Fprintf(d.resourcesView, "[gray]Updated: %s[-]", time.Now().Format("15:04:05"))
 }
 
-func (d *Dashboard) updateLogsView(containers docker.Containers) {
-	d.logsView.Clear()
-	for _, c := range containers.C {
-		serviceName := c.Service
-		if serviceName == "" {
-			serviceName = c.ID[:12]
-		}
+var serviceColors = []string{
+	"yellow", "cyan", "magenta", "green", "blue", "red",
+	"darkcyan", "darkmagenta", "olive", "teal",
+}
 
-		fmt.Fprintf(d.logsView, "[yellow]>>> %s[-]\n", serviceName)
-		for _, log := range c.Log {
-			if len(log) > 100 {
-				log = log[:100] + "..."
+func (d *Dashboard) getServiceColor(serviceName string, containers docker.Containers) string {
+	for i, c := range containers.C {
+		name := c.Service
+		if name == "" {
+			if len(c.ID) >= 12 {
+				name = c.ID[:12]
+			} else {
+				name = c.ID
 			}
-			fmt.Fprintf(d.logsView, "[gray]%s[-]\n", log)
 		}
-		fmt.Fprintln(d.logsView, "")
+		if name == serviceName {
+			return serviceColors[i%len(serviceColors)]
+		}
 	}
-	d.logsView.ScrollToEnd()
+	return "white"
+}
+
+func (d *Dashboard) updateLogsView(containers docker.Containers) {
+	row, col := d.logsView.GetScrollOffset()
+
+	d.logsView.Clear()
+	for _, fl := range containers.FlatLogs {
+		color := d.getServiceColor(fl.Service, containers)
+		fmt.Fprintf(d.logsView, "[%s][%s][-] [gray]%s[-]\n", color, fl.Service, fl.Line)
+	}
+
+	if d.firstRender {
+		d.logsView.ScrollToEnd()
+		d.firstRender = false
+	} else if !d.userScrolling {
+		d.logsView.ScrollToEnd()
+	} else {
+		d.logsView.ScrollTo(row, col)
+	}
 }
 
 func (d *Dashboard) Run() error {

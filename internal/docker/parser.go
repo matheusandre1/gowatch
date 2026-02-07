@@ -38,7 +38,7 @@ func ParseLogs(rawLogs io.ReadCloser) []string {
 		pos := 0
 		for pos < n {
 			if pos+8 > n {
-				break // Not enough data for header
+				break
 			}
 
 			// Header: stream type (1 byte) + size (4 bytes big endian) + padding (3 bytes)
@@ -46,15 +46,14 @@ func ParseLogs(rawLogs io.ReadCloser) []string {
 			// Parse size from next 4 bytes (big endian)
 			size := int(buf[pos+4])<<24 | int(buf[pos+5])<<16 | int(buf[pos+6])<<8 | int(buf[pos+7])
 
-			pos += 8 // Skip header
+			pos += 8
 
 			if pos+size > n {
-				break // Not enough data for payload
+				break
 			}
 
 			if size > 0 {
 				logLine := string(buf[pos : pos+size])
-				// Trim newline and any trailing whitespace
 				logLine = strings.TrimSpace(logLine)
 				if logLine != "" {
 					logs = append(logs, logLine)

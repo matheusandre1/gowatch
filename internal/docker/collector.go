@@ -26,6 +26,11 @@ type ContainerLog struct {
 	Logs []string
 }
 
+type FormattedLog struct {
+	Service string
+	Line    string
+}
+
 func getContainerStats(ctx context.Context, apiClient *client.Client, containerID string) ContainerStats {
 	stats, err := apiClient.ContainerStats(ctx, containerID, client.ContainerStatsOptions{Stream: false})
 	if err != nil {
@@ -46,8 +51,8 @@ func getContainerLogs(ctx context.Context, apiClient *client.Client, containerID
 	logs, err := apiClient.ContainerLogs(ctx, containerID, client.ContainerLogsOptions{
 		ShowStdout: true,
 		ShowStderr: true,
-		Tail:       "10",
-		Timestamps: false,
+		Tail:       "50",
+		Timestamps: true,
 	})
 	if err != nil {
 		return []string{"Error fetching logs"}
@@ -69,9 +74,10 @@ func getHostInfo() HostInfo {
 }
 
 type Containers struct {
-	C    []Container
-	Host HostInfo
-	Logs []ContainerLog
+	C        []Container
+	Host     HostInfo
+	Logs     []ContainerLog
+	FlatLogs []FormattedLog
 }
 
 type Container struct {
@@ -114,5 +120,23 @@ func WatchContainers(ctx context.Context, apiClient *client.Client) (Containers,
 		})
 	}
 	containers.Host = getHostInfo()
+
+	for _, c := range containers.C {
+		serviceName := c.Service
+		if serviceName == "" {
+			if len(c.ID) >= 12 {
+				serviceName = c.ID[:12]
+			} else {
+				serviceName = c.ID
+			}
+		}
+		for _, line := range c.Log {
+			containers.FlatLogs = append(containers.FlatLogs, FormattedLog{
+				Service: serviceName,
+				Line:    line,
+			})
+		}
+	}
+
 	return containers, nil
 }
